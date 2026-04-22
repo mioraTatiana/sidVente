@@ -25,11 +25,9 @@ const upload = multer({ dest: "nifi/input/" });
 // /api/data - all records for dashboard
 app.get("/api/data", async (req, res) => {
   try {
-    app.get("/api/data", async (req, res) => {
-      try {
-        const result = await pool.query(`
+    const result = await pool.query(`
       SELECT 
-        id_ventestoque,
+        id_ventestocke,
         date_vente,
         produit,
         categorie,
@@ -41,12 +39,11 @@ app.get("/api/data", async (req, res) => {
       ORDER BY date_vente DESC 
       LIMIT 1000
     `);
-        res.json(result.rows);
-      } catch (err) {
-        res.status(500).json({ error: err.message });
-      }
-    });
+    
+    res.json(result.rows);
+    
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
