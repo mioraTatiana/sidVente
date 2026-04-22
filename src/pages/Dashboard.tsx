@@ -8,31 +8,22 @@ import {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#FF5555', '#55FF55', '#AA00FF'];
 
-function getMonthKey(dateStr) {
-  const date = new Date(dateStr + 'T12:00:00');
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-}
-
-function computeMonthlyCA(data) {
-  const monthly = {};
+function computeYearlyCA(data) {
+  const yearly = {};
   data.forEach((r) => {
-    const key = getMonthKey(r.date_vente);
+    if (!r.date_vente) return;
+    const year = new Date(r.date_vente).getFullYear();
     const ca = (r.quantite_vendue || 0) * (r.prix_unitaire || 0);
-    monthly[key] = (monthly[key] || 0) + ca;
+    yearly[year] = (yearly[year] || 0) + ca;
   });
 
-  const now = new Date();
-  const months = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-  return months.map((m) => ({ name: m, value: monthly[m] || 0 }));
+  // Tri par année croissante
+  return Object.entries(yearly)
+    .map(([name, value]) => ({ name: name.toString(), value }))
+    .sort((a, b) => a.name - b.name);
 }
 
-function topBySum(data, key, isCa = false, limit = 5) {
+function topBySum(data, key, isCa = false, limit = 10) {
   const group = {};
   data.forEach((r) => {
     const k = r[key];
@@ -48,15 +39,6 @@ function topBySum(data, key, isCa = false, limit = 5) {
     .slice(0, limit);
 }
 
-function outOfStockProducts(data) {
-  const minStocks = {};
-  data.forEach((r) => {
-    const p = r.produit;
-    minStocks[p] = Math.min(minStocks[p] || Infinity, r.quantite_stock || 0);
-  });
-  return Object.keys(minStocks).filter((p) => minStocks[p] <= 0);
-}
-
 function pieStockData(data) {
   const group = {};
   data.forEach((r) => {
@@ -64,7 +46,7 @@ function pieStockData(data) {
   });
   return Object.entries(group)
     .filter(([, v]) => v > 0)
-    .map(([name, value]) => ({ name, value }));
+    .map(([name, value]) => ({ name, value: value as number }));
 }
 
 const Dashboard = () => {
@@ -89,11 +71,10 @@ const Dashboard = () => {
 
   if (loading) return <div className="text-center text-2xl mt-10">Chargement des données...</div>;
 
-  const monthlyCA = computeMonthlyCA(data);
+  const yearlyCA = computeYearlyCA(data);
   const topProductsSold = topBySum(data, 'produit', false, 5);
-  const topProductsCA = topBySum(data, 'produit', true, 5);
+  const topProductsCA = topBySum(data, 'produit', true, 10);
   const topCategories = topBySum(data, 'categorie', true, 5);
-  const ruptureStock = outOfStockProducts(data);
   const pieData = pieStockData(data);
 
   return (
@@ -101,7 +82,9 @@ const Dashboard = () => {
       <div className="max-w-7xl mx-auto">
         <h1 className="text-4xl font-bold text-slate-900 mb-8">Dashboard VenteStock</h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
+        {/* Cartes statistiques */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+          {/* Produits les plus vendus */}
           <div className="bg-white p-8 rounded-xl shadow-lg">
             <h3 className="text-2xl font-semibold text-slate-900 mb-4">Produits les plus vendus</h3>
             <ul className="space-y-2">
@@ -114,19 +97,7 @@ const Dashboard = () => {
             </ul>
           </div>
 
-          <div className="bg-white p-8 rounded-xl shadow-lg">
-            <h3 className="text-2xl font-semibold text-slate-900 mb-4">Produits en rupture</h3>
-            {ruptureStock.length === 0 ? (
-              <p className="text-green-600 font-medium">Aucun produit en rupture !</p>
-            ) : (
-              <ul className="space-y-2">
-                {ruptureStock.slice(0, 5).map((p, i) => (
-                  <li key={i} className="text-red-600">{p}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-
+          {/* Catégories les plus vendues */}
           <div className="bg-white p-8 rounded-xl shadow-lg">
             <h3 className="text-2xl font-semibold text-slate-900 mb-4">Catégories les plus vendues</h3>
             <ul className="space-y-2">
@@ -140,57 +111,61 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Line Chart */}
+        {/* === GRAPHE CHIFFRE D'AFFAIRE PAR ANNÉE === */}
         <div className="bg-white p-8 rounded-xl shadow-lg mb-12">
-          <h3 className="text-2xl font-semibold text-slate-900 mb-6">Chiffre d'affaire global (12 derniers mois)</h3>
+          <h3 className="text-2xl font-semibold text-slate-900 mb-6">
+            Chiffre d'Affaire par Année
+          </h3>
           <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={monthlyCA}>
+            <LineChart data={yearlyCA}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
               <Tooltip formatter={(value) => [`${value.toLocaleString()} Ar`, 'CA']} />
-              <Line type="monotone" dataKey="value" stroke="#8884d8" strokeWidth={3} />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#8884d8" 
+                strokeWidth={4} 
+                dot={{ r: 6 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-          <div className="bg-white p-8 rounded-xl shadow-lg">
-            <h3 className="text-2xl font-semibold text-slate-900 mb-6">Produits les plus/moins vendus (Quantité)</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={topBySum(data, 'produit', false, 10)}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" angle={-45} height={80} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#82ca9d" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="bg-white p-8 rounded-xl shadow-lg">
-            <h3 className="text-2xl font-semibold text-slate-900 mb-6">CA par produits</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={topProductsCA}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" angle={-45} height={80} />
-                <YAxis />
-                <Tooltip formatter={(value) => [`${value.toLocaleString()} Ar`, 'CA']} />
-                <Bar dataKey="value" fill="#8884d8" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        {/* === GRAPHE CHIFFRE D'AFFAIRE PAR PRODUIT === */}
+        <div className="bg-white p-8 rounded-xl shadow-lg mb-12">
+          <h3 className="text-2xl font-semibold text-slate-900 mb-6">
+            Chiffre d'Affaire par Produit
+          </h3>
+          <ResponsiveContainer width="100%" height={450}>
+            <BarChart data={topProductsCA}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="name" 
+                angle={-45} 
+                height={100} 
+                textAnchor="end"
+              />
+              <YAxis />
+              <Tooltip formatter={(value) => [`${value.toLocaleString()} Ar`, 'CA']} />
+              <Bar dataKey="value" fill="#8884d8" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
+        {/* === CAMEMBERT RÉPARTITION DU STOCK === */}
         <div className="bg-white p-8 rounded-xl shadow-lg">
-          <h3 className="text-2xl font-semibold text-slate-900 mb-6">Répartition du stock</h3>
+          <h3 className="text-2xl font-semibold text-slate-900 mb-6">
+            Répartition des Produits en Stock
+          </h3>
           <ResponsiveContainer width="100%" height={400}>
             <PieChart>
               <Pie
                 data={pieData}
                 cx="50%"
                 cy="50%"
-                outerRadius={100}
+                outerRadius={110}
                 dataKey="value"
                 nameKey="name"
                 label
@@ -204,6 +179,7 @@ const Dashboard = () => {
             </PieChart>
           </ResponsiveContainer>
         </div>
+
       </div>
     </div>
   );
